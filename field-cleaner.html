@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field Name Cleaner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;
+  --surface:#ffffff;
+  --surface2:#f2f1ee;
+  --border:#e2e0db;
+  --border2:#ccc9c2;
+  --tx:#1a1916;
+  --tx2:#6b6860;
+  --tx3:#9b9890;
+  --accent:#2d5be3;
+  --accent-bg:#eef2fd;
+  --warn:#b45309;
+  --warn-bg:#fef3c7;
+  --ok:#15803d;
+  --ok-bg:#dcfce7;
+  --err:#b91c1c;
+  --err-bg:#fee2e2;
+  --font:'DM Sans',system-ui,sans-serif;
+  --mono:'DM Mono','SF Mono',monospace;
+  --radius:10px;
+  --radius-sm:6px;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5;min-height:100vh}
+::selection{background:var(--accent);color:#fff}
+
+/* ── LAYOUT ── */
+.shell{max-width:760px;margin:0 auto;padding:48px 24px 80px}
+.header{margin-bottom:40px}
+.wordmark{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:20px}
+.header h1{font-size:28px;font-weight:600;letter-spacing:-.4px;color:var(--tx);line-height:1.2}
+.header p{font-size:14px;color:var(--tx2);margin-top:6px}
+
+/* ── STEPPER ── */
+.stepper{display:flex;align-items:center;gap:0;margin-bottom:36px}
+.step{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;color:var(--tx3)}
+.step.active{color:var(--tx)}
+.step.done{color:var(--ok)}
+.step-n{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;background:transparent}
+.step.active .step-n{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.step.done .step-n{background:var(--ok);color:#fff;border-color:var(--ok)}
+.step-line{flex:1;height:1px;background:var(--border);margin:0 8px}
+
+/* ── UPLOAD ── */
+.drop-zone{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:52px 32px;text-align:center;cursor:pointer;transition:all .15s;background:var(--surface)}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:var(--accent-bg)}
+.drop-icon{font-size:32px;margin-bottom:14px;display:block}
+.drop-zone h2{font-size:16px;font-weight:600;margin-bottom:6px}
+.drop-zone p{font-size:13px;color:var(--tx2)}
+.format-pills{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.pill{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2)}
+#fileInput{display:none}
+
+/* ── FILE INFO BAR ── */
+.file-bar{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:20px}
+.file-bar .fi-icon{font-size:22px}
+.fi-name{font-size:14px;font-weight:600}
+.fi-meta{font-size:12px;color:var(--tx2);margin-top:1px}
+.file-bar .reset-btn{margin-left:auto;font-size:12px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:none;color:var(--tx2);cursor:pointer;font-family:var(--font);transition:all .1s}
+.reset-btn:hover{border-color:var(--err);color:var(--err);background:var(--err-bg)}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:var(--font);transition:all .15s;letter-spacing:.01em}
+.btn-dark{background:var(--tx);color:var(--bg)}
+.btn-dark:hover{background:#333}
+.btn-outline{background:transparent;color:var(--tx);border:1px solid var(--border2)}
+.btn-outline:hover{border-color:var(--tx);background:var(--surface2)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:24px}
+
+/* ── REVIEW TABLE ── */
+.hint-bar{font-size:12px;color:var(--tx2);padding:10px 14px;background:var(--surface2);border-radius:var(--radius-sm);border-left:3px solid var(--border2);margin-bottom:16px;line-height:1.6}
+.hint-bar strong{color:var(--tx);font-weight:600}
+.table-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.field-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.field-table th{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;background:var(--surface2)}
+.field-table th:nth-child(1){width:175px}
+.field-table th:nth-child(2){width:140px}
+.field-table th:nth-child(3){width:175px}
+.field-table th:nth-child(4){width:auto}
+.field-table td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.field-table tr:last-child td{border-bottom:none}
+.field-table tr:hover td{background:var(--surface2)}
+.orig-chip{font-family:var(--mono);font-size:11px;color:var(--tx2);background:var(--surface2);border:1px solid var(--border);padding:3px 8px;border-radius:4px;display:inline-block;max-width:155px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+.field-input{width:100%;padding:5px 9px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--tx);font-family:var(--font)}
+.field-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.field-input.mono{font-family:var(--mono);font-size:12px}
+.warn-msg{font-size:10px;color:var(--warn);margin-top:3px;display:none}
+.warn-msg.show{display:block}
+.desc-cell{font-size:12px;color:var(--tx2);line-height:1.4}
+
+/* ── ERROR ── */
+.error-box{font-size:13px;color:var(--err);padding:10px 14px;background:var(--err-bg);border-radius:var(--radius-sm);border:1px solid #fca5a5;margin-top:12px}
+
+/* ── SUCCESS ── */
+.success-wrap{text-align:center;padding:48px 24px}
+.success-icon{font-size:44px;margin-bottom:16px}
+.success-wrap h2{font-size:20px;font-weight:600;margin-bottom:6px}
+.success-wrap .sub{font-size:13px;color:var(--tx2);margin-bottom:28px}
+.stats{display:flex;gap:12px;justify-content:center;margin-bottom:28px}
+.stat{padding:16px 28px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.stat .n{font-size:26px;font-weight:600}
+.stat .l{font-size:11px;color:var(--tx2);margin-top:2px}
+
+/* ── DIVIDER ── */
+.divider{height:1px;background:var(--border);margin:24px 0}
+
+@media(max-width:600px){
+  .field-table th:nth-child(4),.field-table td:nth-child(4){display:none}
+  .field-table th:nth-child(1){width:130px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div class="wordmark">Field Cleaner</div>
+    <h1>Clean your field names</h1>
+    <p>Upload a dataset, review the cleaned names, download the result.</p>
+  </div>
+
+  <div class="stepper">
+    <div class="step active" id="s1"><div class="step-n">1</div><span>Upload</span></div>
+    <div class="step-line"></div>
+    <div class="step" id="s2"><div class="step-n">2</div><span>Review</span></div>
+    <div class="step-line"></div>
+    <div class="step" id="s3"><div class="step-n">3</div><span>Download</span></div>
+  </div>
+
+  <div id="step1">
+    <div class="drop-zone" id="dropZone">
+      <span class="drop-icon">📂</span>
+      <h2>Drop your file here or click to browse</h2>
+      <p>CSV, Excel, or TSV — first row must be headers</p>
+      <div class="format-pills">
+        <span class="pill">.csv</span>
+        <span class="pill">.xlsx</span>
+        <span class="pill">.xls</span>
+        <span class="pill">.tsv</span>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.tsv">
+    <div id="errorMsg"></div>
+  </div>
+
+  <div id="step2" style="display:none">
+    <div id="fileBar"></div>
+    <div id="reviewArea"></div>
+  </div>
+
+  <div id="step3" style="display:none"></div>
+
+</div>
+
+<script>
+// ─── ABBREVIATION DICTIONARY ───────────────────────────────────────────────
+// short = GIS-safe field name token (kept terse)
+// display = human-readable alias token (Title Case word)
+const DICT = {
+  // Address components
+  addr:{s:'addr',d:'Address'}, address:{s:'addr',d:'Address'},
+  st:{s:'st',d:'Street'}, str:{s:'str',d:'Street'}, street:{s:'st',d:'Street'},
+  ave:{s:'ave',d:'Avenue'}, av:{s:'ave',d:'Avenue'}, avenue:{s:'ave',d:'Avenue'},
+  blvd:{s:'blvd',d:'Boulevard'}, boulevard:{s:'blvd',d:'Boulevard'},
+  rd:{s:'rd',d:'Road'}, road:{s:'rd',d:'Road'},
+  dr:{s:'dr',d:'Drive'}, drive:{s:'dr',d:'Drive'},
+  ln:{s:'ln',d:'Lane'}, lane:{s:'ln',d:'Lane'},
+  ct:{s:'ct',d:'Court'}, court:{s:'ct',d:'Court'},
+  pl:{s:'pl',d:'Place'}, place:{s:'pl',d:'Place'},
+  cir:{s:'cir',d:'Circle'}, circle:{s:'cir',d:'Circle'},
+  hwy:{s:'hwy',d:'Highway'}, highway:{s:'hwy',d:'Highway'},
+  pkwy:{s:'pkwy',d:'Parkway'}, parkway:{s:'pkwy',d:'Parkway'},
+  trl:{s:'trl',d:'Trail'}, trail:{s:'trl',d:'Trail'},
+  ter:{s:'ter',d:'Terrace'}, terrace:{s:'ter',d:'Terrace'},
+  ste:{s:'ste',d:'Suite'}, suite:{s:'ste',d:'Suite'},
+  apt:{s:'apt',d:'Apt'}, apartment:{s:'apt',d:'Apt'},
+  unit:{s:'unit',d:'Unit'},
+  flr:{s:'flr',d:'Floor'}, floor:{s:'flr',d:'Floor'},
+  bldg:{s:'bldg',d:'Building'}, building:{s:'bldg',d:'Building'},
+  // Location / GIS
+  cty:{s:'city',d:'City'}, city:{s:'city',d:'City'},
+  cnty:{s:'county',d:'County'}, county:{s:'county',d:'County'},
+  co:{s:'co',d:'County'},
+  zip:{s:'zip',d:'ZIP'}, zp:{s:'zip',d:'ZIP'}, zipcode:{s:'zip',d:'ZIP'},
+  state:{s:'state',d:'State'}, sta:{s:'state',d:'State'},
+  country:{s:'country',d:'Country'}, cntry:{s:'cntry',d:'Country'},
+  lat:{s:'lat',d:'Latitude'}, latitude:{s:'lat',d:'Latitude'},
+  lon:{s:'lon',d:'Longitude'}, lng:{s:'lon',d:'Longitude'}, longitude:{s:'lon',d:'Longitude'},
+  geo:{s:'geo',d:'Geo'}, geom:{s:'geom',d:'Geometry'}, geometry:{s:'geom',d:'Geometry'},
+  loc:{s:'loc',d:'Location'}, location:{s:'loc',d:'Location'},
+  x:{s:'x',d:'X'}, y:{s:'y',d:'Y'}, z:{s:'z',d:'Z'},
+  shape:{s:'shape',d:'Shape'},
+  area:{s:'area',d:'Area'},
+  len:{s:'len',d:'Length'}, length:{s:'len',d:'Length'},
+  perim:{s:'perim',d:'Perimeter'}, perimeter:{s:'perim',d:'Perimeter'},
+  sqft:{s:'sqft',d:'Sq Ft'}, sf:{s:'sqft',d:'Sq Ft'},
+  sq:{s:'sq',d:'Sq'}, ft:{s:'ft',d:'Ft'},
+  ac:{s:'acres',d:'Acres'}, acre:{s:'acres',d:'Acres'}, acres:{s:'acres',d:'Acres'},
+  dist:{s:'dist',d:'District'}, district:{s:'dist',d:'District'},
+  rgn:{s:'rgn',d:'Region'}, region:{s:'rgn',d:'Region'},
+  div:{s:'div',d:'Division'}, division:{s:'div',d:'Division'},
+  // Property / Parcel
+  prpty:{s:'prop',d:'Property'}, prop:{s:'prop',d:'Property'}, property:{s:'prop',d:'Property'},
+  pcl:{s:'parcel',d:'Parcel'}, parcel:{s:'parcel',d:'Parcel'},
+  own:{s:'owner',d:'Owner'}, ownr:{s:'owner',d:'Owner'}, owner:{s:'owner',d:'Owner'},
+  assr:{s:'assd',d:'Assessed'}, assd:{s:'assd',d:'Assessed'}, assessed:{s:'assd',d:'Assessed'},
+  // Identifiers
+  id:{s:'id',d:'ID'},
+  oid:{s:'oid',d:'Object ID'}, objectid:{s:'oid',d:'Object ID'},
+  gid:{s:'gid',d:'Global ID'}, globalid:{s:'gid',d:'Global ID'},
+  uid:{s:'uid',d:'Unique ID'},
+  fips:{s:'fips',d:'FIPS'},
+  no:{s:'no',d:'Number'}, num:{s:'num',d:'Number'}, nbr:{s:'num',d:'Number'}, number:{s:'num',d:'Number'},
+  cd:{s:'code',d:'Code'}, code:{s:'code',d:'Code'},
+  ref:{s:'ref',d:'Reference'}, reference:{s:'ref',d:'Reference'},
+  idx:{s:'idx',d:'Index'}, index:{s:'idx',d:'Index'},
+  // Names
+  nm:{s:'name',d:'Name'}, name:{s:'name',d:'Name'},
+  frst:{s:'first',d:'First'}, first:{s:'first',d:'First'},
+  last:{s:'last',d:'Last'}, lst:{s:'last',d:'Last'},
+  mid:{s:'mid',d:'Middle'}, middle:{s:'mid',d:'Middle'},
+  pref:{s:'pref',d:'Prefix'}, prefix:{s:'pref',d:'Prefix'},
+  suf:{s:'suf',d:'Suffix'}, suffix:{s:'suf',d:'Suffix'},
+  // Dates / Time
+  dt:{s:'date',d:'Date'}, date:{s:'date',d:'Date'},
+  yr:{s:'year',d:'Year'}, year:{s:'year',d:'Year'},
+  mo:{s:'month',d:'Month'}, month:{s:'month',d:'Month'},
+  dy:{s:'day',d:'Day'}, day:{s:'day',d:'Day'},
+  tm:{s:'time',d:'Time'}, time:{s:'time',d:'Time'},
+  ts:{s:'ts',d:'Timestamp'}, timestamp:{s:'ts',d:'Timestamp'},
+  created:{s:'created',d:'Created'}, updated:{s:'updated',d:'Updated'},
+  modified:{s:'modif',d:'Modified'}, modif:{s:'modif',d:'Modified'},
+  start:{s:'start',d:'Start'}, end:{s:'end',d:'End'},
+  // Financial
+  amt:{s:'amt',d:'Amount'}, amount:{s:'amt',d:'Amount'},
+  val:{s:'val',d:'Value'}, value:{s:'val',d:'Value'},
+  cost:{s:'cost',d:'Cost'}, price:{s:'price',d:'Price'}, prc:{s:'price',d:'Price'},
+  rev:{s:'rev',d:'Revenue'}, revenue:{s:'rev',d:'Revenue'},
+  tax:{s:'tax',d:'Tax'}, fee:{s:'fee',d:'Fee'},
+  bal:{s:'bal',d:'Balance'}, balance:{s:'bal',d:'Balance'},
+  inc:{s:'inc',d:'Income'}, income:{s:'inc',d:'Income'},
+  exp:{s:'exp',d:'Expense'}, expense:{s:'exp',d:'Expense'},
+  // Statistics
+  cnt:{s:'count',d:'Count'}, count:{s:'count',d:'Count'},
+  tot:{s:'total',d:'Total'}, total:{s:'total',d:'Total'},
+  avg:{s:'avg',d:'Average'}, average:{s:'avg',d:'Average'},
+  min:{s:'min',d:'Min'}, max:{s:'max',d:'Max'},
+  pct:{s:'pct',d:'Percent'}, percent:{s:'pct',d:'Percent'},
+  sum:{s:'sum',d:'Sum'}, rate:{s:'rate',d:'Rate'},
+  rank:{s:'rank',d:'Rank'}, score:{s:'score',d:'Score'},
+  // Types / Status / Descriptors
+  typ:{s:'type',d:'Type'}, tp:{s:'type',d:'Type'}, type:{s:'type',d:'Type'},
+  sts:{s:'status',d:'Status'}, stat:{s:'status',d:'Status'}, status:{s:'status',d:'Status'},
+  desc:{s:'desc',d:'Description'}, description:{s:'desc',d:'Description'},
+  cat:{s:'cat',d:'Category'}, category:{s:'cat',d:'Category'},
+  cls:{s:'class',d:'Class'}, class:{s:'class',d:'Class'},
+  grp:{s:'group',d:'Group'}, group:{s:'group',d:'Group'},
+  lbl:{s:'label',d:'Label'}, label:{s:'label',d:'Label'},
+  tag:{s:'tag',d:'Tag'},
+  flg:{s:'flag',d:'Flag'}, flag:{s:'flag',d:'Flag'},
+  ind:{s:'ind',d:'Indicator'}, indic:{s:'ind',d:'Indicator'},
+  // Contact / Communication
+  ph:{s:'phone',d:'Phone'}, phn:{s:'phone',d:'Phone'}, phone:{s:'phone',d:'Phone'}, tel:{s:'phone',d:'Phone'},
+  email:{s:'email',d:'Email'}, eml:{s:'email',d:'Email'},
+  web:{s:'web',d:'Website'}, url:{s:'url',d:'URL'},
+  fax:{s:'fax',d:'Fax'},
+  // Organization / People
+  org:{s:'org',d:'Organization'}, organization:{s:'org',d:'Organization'},
+  dept:{s:'dept',d:'Department'}, department:{s:'dept',d:'Department'},
+  div2:{s:'div',d:'Division'},
+  co2:{s:'co',d:'Company'}, company:{s:'co',d:'Company'}, corp:{s:'corp',d:'Corporation'},
+  emp:{s:'emp',d:'Employee'}, employment:{s:'emp',d:'Employment'},
+  occ:{s:'occ',d:'Occupation'},
+  // Geo / Census
+  pop:{s:'pop',d:'Population'}, population:{s:'pop',d:'Population'},
+  dens:{s:'dens',d:'Density'}, density:{s:'dens',d:'Density'},
+  hh:{s:'hh',d:'Household'}, household:{s:'hh',d:'Household'},
+  age:{s:'age',d:'Age'},
+  edu:{s:'edu',d:'Education'}, school:{s:'school',d:'School'}, grade:{s:'grade',d:'Grade'},
+  naics:{s:'naics',d:'NAICS'}, sic:{s:'sic',d:'SIC'},
+  // Qualifiers
+  pri:{s:'pri',d:'Primary'}, primary:{s:'pri',d:'Primary'},
+  sec:{s:'sec',d:'Secondary'}, secondary:{s:'sec',d:'Secondary'},
+  alt:{s:'alt',d:'Alt'}, alternate:{s:'alt',d:'Alt'},
+  std:{s:'std',d:'Standard'}, standard:{s:'std',d:'Standard'},
+  orig:{s:'orig',d:'Original'}, original:{s:'orig',d:'Original'},
+  curr:{s:'curr',d:'Current'}, current:{s:'curr',d:'Current'},
+  prev:{s:'prev',d:'Previous'}, previous:{s:'prev',d:'Previous'},
+  new:{s:'new',d:'New'}, old:{s:'old',d:'Old'},
+  raw:{s:'raw',d:'Raw'}, clean:{s:'clean',d:'Clean'},
+  act:{s:'act',d:'Active'}, active:{s:'act',d:'Active'},
+  inact:{s:'inact',d:'Inactive'}, inactive:{s:'inact',d:'Inactive'},
+  is:{s:'is',d:'Is'}, has:{s:'has',d:'Has'}, yn:{s:'yn',d:'Yes/No'},
+  // Misc
+  txt:{s:'text',d:'Text'}, text:{s:'text',d:'Text'},
+  note:{s:'note',d:'Note'}, notes:{s:'notes',d:'Notes'},
+  cmnt:{s:'cmnt',d:'Comment'}, comment:{s:'cmnt',d:'Comment'},
+  src:{s:'src',d:'Source'}, source:{s:'src',d:'Source'},
+  link:{s:'link',d:'Link'}, img:{s:'img',d:'Image'}, image:{s:'img',d:'Image'},
+  doc:{s:'doc',d:'Document'}, file:{s:'file',d:'File'},
+  dir:{s:'dir',d:'Direction'}, direction:{s:'dir',d:'Direction'},
+  pre:{s:'pre',d:'Pre'}, post:{s:'post',d:'Post'},
+};
+
+// ─── TOKENIZER ────────────────────────────────────────────────────────────
+function tokenize(raw) {
+  let s = raw.trim();
+  // Insert underscore between camelCase boundaries
+  s = s.replace(/([a-z])([A-Z])/g, '$1_$2');
+  s = s.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2');
+  // Split on common delimiters and keep numeric tokens
+  const tokens = s.split(/[_\-\s\.]+/).filter(Boolean);
+  return tokens.map(t => t.toLowerCase()).filter(t => t.length > 0);
+}
+
+// ─── FIELD NAME BUILDER ───────────────────────────────────────────────────
+function buildFieldName(tokens) {
+  const shorts = tokens.map(t => {
+    if (/^\d+$/.test(t)) return t; // keep bare numbers
+    return (DICT[t] ? DICT[t].s : t);
+  });
+
+  // Join with underscores, trim to ≤10 chars
+  let result = '';
+  for (let i = 0; i < shorts.length; i++) {
+    const candidate = result ? result + '_' + shorts[i] : shorts[i];
+    if (candidate.length <= 10) {
+      result = candidate;
+    } else if (result.length === 0) {
+      result = shorts[i].slice(0, 10);
+    } else {
+      break;
+    }
+  }
+  // Ensure valid: lowercase, replace non-[a-z0-9_] chars
+  result = result.replace(/[^a-z0-9_]/g, '').replace(/^_+|_+$/g, '');
+  if (!result || /^\d/.test(result)) result = 'field_' + result;
+  return result.slice(0, 10);
+}
+
+// ─── ALIAS BUILDER ────────────────────────────────────────────────────────
+function buildAlias(tokens) {
+  const words = tokens.map(t => {
+    if (/^\d+$/.test(t)) return t;
+    if (DICT[t]) return DICT[t].d;
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  });
+  return words.join(' ').slice(0, 40);
+}
+
+// ─── CLEAN ONE FIELD ─────────────────────────────────────────────────────
+function cleanField(original) {
+  const tokens = tokenize(original);
+  if (tokens.length === 0) return { original, field_name: original.slice(0,10).toLowerCase(), field_alias: original };
+  return {
+    original,
+    field_name: buildFieldName(tokens),
+    field_alias: buildAlias(tokens),
+  };
+}
+
+// ─── DEDUP FIELD NAMES ────────────────────────────────────────────────────
+function dedupNames(mappings) {
+  const seen = {};
+  return mappings.map(m => {
+    let name = m.field_name;
+    if (seen[name] !== undefined) {
+      seen[name]++;
+      const suffix = '_' + seen[name];
+      name = name.slice(0, 10 - suffix.length) + suffix;
+    } else {
+      seen[name] = 0;
+    }
+    return { ...m, field_name: name };
+  });
+}
+
+// ─── STATE ───────────────────────────────────────────────────────────────
+let parsedData = null, fieldMappings = [], currentFile = null;
+
+// ─── DOM REFS ─────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const step1El  = document.getElementById('step1');
+const step2El  = document.getElementById('step2');
+const step3El  = document.getElementById('step3');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function setStep(n) {
+  ['s1','s2','s3'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('active','done');
+    if (i + 1 < n) el.classList.add('done');
+    if (i + 1 === n) el.classList.add('active');
+  });
+}
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','xlsx','xls','tsv'].includes(ext)) { showError('Unsupported type. Use CSV, XLSX, XLS, or TSV.'); return; }
+  currentFile = file; clearError();
+  ext === 'csv' || ext === 'tsv' ? parseCSV(file) : parseExcel(file);
+}
+
+function parseCSV(file) {
+  Papa.parse(file, {
+    delimiter: file.name.endsWith('.tsv') ? '\t' : '', header: true, skipEmptyLines: true,
+    complete: res => {
+      if (!res.data.length) { showError('File appears empty.'); return; }
+      parsedData = { type: 'csv', data: res.data, headers: res.meta.fields };
+      goToStep2();
+    },
+    error: e => showError('Parse error: ' + e.message)
+  });
+}
+
+function parseExcel(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!data.length) { showError('Sheet appears empty.'); return; }
+      parsedData = { type: 'xlsx', data, headers: Object.keys(data[0]), workbook: wb, sheetName: wb.SheetNames[0] };
+      goToStep2();
+    } catch(err) { showError('Could not read Excel file: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function goToStep2() {
+  setStep(2);
+  step1El.style.display = 'none';
+  step2El.style.display = 'block';
+
+  // Run cleaning immediately
+  fieldMappings = dedupNames(parsedData.headers.map(h => cleanField(h)));
+
+  document.getElementById('fileBar').innerHTML = `
+    <div class="file-bar">
+      <div class="fi-icon">${parsedData.type === 'xlsx' ? '📊' : '📄'}</div>
+      <div>
+        <div class="fi-name">${currentFile.name}</div>
+        <div class="fi-meta">${parsedData.data.length.toLocaleString()} rows · ${parsedData.headers.length} fields</div>
+      </div>
+      <button class="reset-btn" onclick="resetApp()">Start over</button>
+    </div>`;
+
+  renderTable();
+}
+
+function renderTable() {
+  const rows = fieldMappings.map((f, i) => `
+    <tr>
+      <td><span class="orig-chip" title="${f.original}">${f.original}</span></td>
+      <td>
+        <input class="field-input mono" id="fn_${i}" value="${f.field_name}" maxlength="10" spellcheck="false" oninput="validateFn(${i})">
+        <div class="warn-msg" id="warn_${i}">a–z, 0–9, _ only · max 10 chars</div>
+      </td>
+      <td><input class="field-input" id="fa_${i}" value="${f.field_alias}" maxlength="40"></td>
+      <td class="desc-cell">${f.field_alias}</td>
+    </tr>`).join('');
+
+  document.getElementById('reviewArea').innerHTML = `
+    <div class="hint-bar">
+      <strong>Only words from each original name were used.</strong> Edit any field name or alias. Field names must be snake_case, max 10 chars.
+    </div>
+    <div class="table-wrap">
+      <table class="field-table">
+        <thead><tr><th>Original</th><th>Field name</th><th>Field alias</th><th>Description</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-dark" onclick="applyAndDownload()">Download cleaned file</button>
+    </div>`;
+}
+
+function validateFn(i) {
+  const val = document.getElementById(`fn_${i}`).value;
+  const warn = document.getElementById(`warn_${i}`);
+  const ok = /^[a-z][a-z0-9_]{0,9}$/.test(val);
+  warn.classList.toggle('show', !ok);
+}
+
+function applyAndDownload() {
+  const final = fieldMappings.map((f, i) => ({
+    original: f.original,
+    field_name: document.getElementById(`fn_${i}`).value.trim() || f.field_name,
+    field_alias: document.getElementById(`fa_${i}`).value.trim() || f.field_alias,
+  }));
+
+  const renamedData = parsedData.data.map(row => {
+    const newRow = {};
+    final.forEach(f => { newRow[f.field_name] = row[f.original]; });
+    return newRow;
+  });
+
+  const baseName = currentFile.name.replace(/\.[^.]+$/, '');
+  let blob, filename;
+
+  if (parsedData.type === 'csv') {
+    blob = new Blob([Papa.unparse(renamedData)], { type: 'text/csv' });
+    filename = baseName + '_cleaned.csv';
+  } else {
+    const ws = XLSX.utils.json_to_sheet(renamedData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cleaned');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    blob = new Blob([buf], { type: 'application/octet-stream' });
+    filename = baseName + '_cleaned.xlsx';
+  }
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+
+  const changed = final.filter(f => f.field_name !== f.original).length;
+  showSuccess(final.length, changed, filename);
+}
+
+function showSuccess(total, changed, filename) {
+  setStep(3);
+  step2El.style.display = 'none';
+  step3El.style.display = 'block';
+  step3El.innerHTML = `
+    <div class="success-wrap">
+      <div class="success-icon">✅</div>
+      <h2>File downloaded</h2>
+      <p class="sub">${filename}</p>
+      <div class="stats">
+        <div class="stat"><div class="n">${total}</div><div class="l">Total fields</div></div>
+        <div class="stat"><div class="n">${changed}</div><div class="l">Renamed</div></div>
+        <div class="stat"><div class="n">${total - changed}</div><div class="l">Kept same</div></div>
+      </div>
+      <div class="btn-row" style="justify-content:center">
+        <button class="btn btn-dark" onclick="resetApp()">Clean another file</button>
+      </div>
+    </div>`;
+}
+
+function resetApp() {
+  parsedData = null; fieldMappings = []; currentFile = null;
+  step1El.style.display = 'block';
+  step2El.style.display = 'none';
+  step3El.style.display = 'none';
+  document.getElementById('fileBar').innerHTML = '';
+  document.getElementById('reviewArea').innerHTML = '';
+  step3El.innerHTML = '';
+  fileInput.value = '';
+  setStep(1); clearError();
+}
+
+function showError(msg) { document.getElementById('errorMsg').innerHTML = `<div class="error-box">${msg}</div>`; }
+function clearError() { document.getElementById('errorMsg').innerHTML = ''; }
+</script>
+</body>
+</html>
