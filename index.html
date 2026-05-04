@@ -199,7 +199,7 @@ const CLIENT_ID='1045596734971-81bhl6kdjpv97l529qbkmemr4t5lg6ub.apps.googleuserc
 
 // ═══ DICTIONARY ═════════════════════════════════════════════════════════════
 // s = GIS field name token (max contributes to 10-char limit)
-// d = Full display word for alias (AI reads this — always spell it out)
+// d = Full display word for field alias (shown in ArcGIS attribute table, pop-ups, legends)
 const D={
   // ── Common words (from camelCase datasets) ──
   project:{s:'proj',d:'Project'},projects:{s:'proj',d:'Projects'},
@@ -420,6 +420,31 @@ const D={
   emp:{s:'emp',d:'Employment'},occ:{s:'occ',d:'Occupation'},
   prod:{s:'prod',d:'Product'},
   cre:{s:'cre',d:'CRE'},
+  // ── Additional words for snake_case datasets ──
+  permit:{s:'permit',d:'Permit'},permits:{s:'permit',d:'Permits'},
+  brokerage:{s:'brok',d:'Brokerage'},broker:{s:'brok',d:'Broker'},
+  sale:{s:'sale',d:'Sale'},sales:{s:'sales',d:'Sales'},
+  activity:{s:'actv',d:'Activity'},activities:{s:'actv',d:'Activities'},
+  recent:{s:'recent',d:'Recent'},
+  typical:{s:'typcl',d:'Typical'},
+  slab:{s:'slab',d:'Slab'},
+  hvac:{s:'hvac',d:'HVAC'},
+  photo:{s:'photo',d:'Photo'},
+  major:{s:'major',d:'Major'},
+  mailing:{s:'mail',d:'Mailing'},
+  height:{s:'hght',d:'Height'},
+  floor:{s:'flr',d:'Floor'},floors:{s:'flrs',d:'Floors'},
+  zoning:{s:'zone',d:'Zoning'},
+  class:{s:'cls',d:'Class'},
+  typical:{s:'typcl',d:'Typical'},
+  renovated:{s:'renov',d:'Renovated'},renovation:{s:'renov',d:'Renovation'},
+  availability:{s:'avail',d:'Availability'},
+  url:{s:'url',d:'URL'},
+  user:{s:'user',d:'User'},
+  notes:{s:'notes',d:'Notes'},
+  bcl:{s:'bcl',d:'BCL'},
+  con:{s:'con',d:'CON'},
+  condate:{s:'con_dt',d:'CON Date'},
   // ── Compound camelCase prefixes (so prefix detector doesn't flag them) ──
   multifamily:{s:'mf',d:'Multi Family'},
   singlefamily:{s:'sf',d:'Single Family'},
@@ -481,15 +506,16 @@ function splitCompound(word){
 
 function tokenize(raw){
   const s=raw.trim();
-  // Detect format: does it have a camelCase boundary (lowercase→uppercase)?
+  // camelCase (ProjectType7) or snake_case (Building_Size) → trust word boundaries
+  // ALL_CAPS (MALLCODE) → compound split to decode abbreviations
   const isCamelCase=/[a-z][A-Z]/.test(s);
+  const isSnakeCase=/_/.test(s)&&/[a-z]/.test(s)&&!isCamelCase;
 
-  if(isCamelCase){
-    // CamelCase mode: split on word boundaries and trust the resulting tokens.
-    // These are ALREADY complete words — do NOT compound-split them.
+  if(isCamelCase||isSnakeCase){
+    // Words already correctly separated — split only, never compound-split
     const x=s
-      .replace(/([a-z])([A-Z])/g,'$1_$2')       // camelCase boundary
-      .replace(/([A-Z]+)([A-Z][a-z])/g,'$1_$2') // ACRONYM boundary
+      .replace(/([a-z])([A-Z])/g,'$1_$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g,'$1_$2')
       .replace(/([a-z])(\d)/g,'$1_$2')           // letter→digit
       .replace(/(\d)([a-zA-Z])/g,'$1_$2');       // digit→letter
     return x.split(/[_\-\s\.]+/).map(p=>p.toLowerCase()).filter(t=>t.length>0);
@@ -513,7 +539,8 @@ function getDisplay(t){
 function buildFieldName(tokens){
   // MINIMAL INTERVENTION: only change what GIS requires.
   // Keep as close to original as possible — just lowercase + valid chars + ≤10.
-  // The alias is what humans and AI read. The field name is just GIS plumbing.
+  // Field name = GIS-safe identifier used in queries and code. Keep close to original.
+  // Field alias = display name shown in ArcGIS UI. Spell it out fully.
   const shorts=tokens.map(getShort);
   let result='';
   for(let i=0;i<shorts.length;i++){
@@ -710,7 +737,7 @@ function buildMappingsAndRenderTable(){document.getElementById('prefixPanel').in
 function renderTable(){
   const memCount=fieldMappings.filter(f=>f.fromMemory).length;
   const rows=fieldMappings.map((f,i)=>`<tr><td><span class="orig-chip" title="${f.original}">${f.original}</span></td><td><input class="field-input mono" id="fn_${i}" value="${f.field_name}" maxlength="10" spellcheck="false" oninput="validateFn(${i})"><div class="warn-msg" id="warn_${i}">a–z 0–9 _ · max 10</div></td><td><input class="field-input" id="fa_${i}" value="${f.field_alias}" maxlength="80"></td><td style="text-align:center">${f.fromMemory?'<span class="mem-dot" title="Auto-filled from memory"></span>':''}</td></tr>`).join('');
-  document.getElementById('reviewArea').innerHTML=`<div class="hint-bar"><strong>Only words from each original field name were used.</strong>${memCount>0?` · <span style="color:var(--purple)">●</span> ${memCount} field${memCount!==1?'s':''} auto-filled from memory.`:''} &nbsp;The alias is what your AI reads.</div><div class="table-wrap"><table class="field-table"><thead><tr><th>Original</th><th>Field name <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(GIS · ≤10 chars)</span></th><th>Field alias <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(AI reads this)</span></th><th>Mem</th></tr></thead><tbody>${rows}</tbody></table></div><div class="btn-row"><button class="btn btn-dark" onclick="applyAndDownload()">Download cleaned file</button></div>`;
+  document.getElementById('reviewArea').innerHTML=`<div class="hint-bar"><strong>Only words from each original field name were used.</strong>${memCount>0?` · <span style="color:var(--purple)">●</span> ${memCount} field${memCount!==1?'s':''} auto-filled from memory.`:''} &nbsp;Field alias = what people see in ArcGIS attribute table, pop-ups, and legends.</div><div class="table-wrap"><table class="field-table"><thead><tr><th>Original</th><th>Field name <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(GIS · ≤10 chars)</span></th><th>Field alias <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(display name in ArcGIS)</span></th><th>Mem</th></tr></thead><tbody>${rows}</tbody></table></div><div class="btn-row"><button class="btn btn-dark" onclick="applyAndDownload()">Download cleaned file</button></div>`;
 }
 
 function validateFn(i){const val=document.getElementById('fn_'+i).value;document.getElementById('warn_'+i).classList.toggle('show',!/^[a-z][a-z0-9_]{0,9}$/.test(val))}
