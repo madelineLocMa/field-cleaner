@@ -420,6 +420,15 @@ const D={
   emp:{s:'emp',d:'Employment'},occ:{s:'occ',d:'Occupation'},
   prod:{s:'prod',d:'Product'},
   cre:{s:'cre',d:'CRE'},
+  // ── Compound camelCase prefixes (so prefix detector doesn't flag them) ──
+  multifamily:{s:'mf',d:'Multi Family'},
+  singlefamily:{s:'sf',d:'Single Family'},
+  plannedretail:{s:'pl_rtl',d:'Planned Retail'},
+  hotelcontact:{s:'htl_ctct',d:'Hotel Contact'},
+  interiordesigner:{s:'int_dsgn',d:'Interior Designer'},
+  equipmentplanner:{s:'eq_plnr',d:'Equipment Planner'},
+  propertymanager:{s:'prop_mgr',d:'Property Manager'},
+  medicalcondate:{s:'med_con',d:'Medical CON Date'},
 };
 
 // ═══ STORAGE ════════════════════════════════════════════════════════════════
@@ -638,11 +647,25 @@ async function saveToDrive(){
 }
 
 // ═══ PREFIX DETECTION ════════════════════════════════════════════════════════
+function isCamelKnown(prefix){
+  // Check if a camelCase prefix like "MultiFamily" is made of known words
+  const lower=prefix.toLowerCase();
+  if(D[lower])return true;
+  // Split camelCase and check each part
+  const parts=prefix.replace(/([a-z])([A-Z])/g,'$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g,'$1_$2').split('_').map(p=>p.toLowerCase());
+  return parts.length>1&&parts.every(p=>D[p]||KNOWN.has(p));
+}
+
 function detectUnknownPrefixes(headers){
   const counts={},examples={};
   for(const h of headers){const parts=h.split('_');if(parts.length<2)continue;const cands=[];if(parts.length>=3)cands.push(parts[0]+'_'+parts[1]);cands.push(parts[0]);for(const p of cands){counts[p]=(counts[p]||0)+1;if(!examples[p])examples[p]=[];if(examples[p].length<3)examples[p].push(h)}}
   const sorted=Object.keys(counts).sort((a,b)=>b.length-a.length);const result={};
-  for(const p of sorted){if(counts[p]<2||D[p.toLowerCase()])continue;const dominated=Object.keys(result).some(q=>q.startsWith(p+'_'));if(!dominated)result[p]={count:counts[p],examples:examples[p]||[]}}
+  for(const p of sorted){
+    if(counts[p]<2)continue;
+    if(isCamelKnown(p))continue;
+    const dominated=Object.keys(result).some(q=>q.startsWith(p+'_'));
+    if(!dominated)result[p]={count:counts[p],examples:examples[p]||[]};
+  }
   return result;
 }
 
